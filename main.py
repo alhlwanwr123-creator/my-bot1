@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application,
@@ -7,6 +8,7 @@ from telegram.ext import (
     MessageHandler,
     ContextTypes,
     filters,
+    ConversationHandler
 )
 
 # إعداد السجلات (Logging)
@@ -20,47 +22,35 @@ logging.basicConfig(
 BOT_TOKEN = "7124304852:AAHSlvMk_kyZE86ANyayMhGtLXV2gJ6sc80"
 ADMIN_ID = 5765266007
 
-# قاعدة بيانات سلاسل التقارير (Anatomy)
-ANATOMY_SERIES = [
-    {"id": 1, "title": "أساسيات علم التشريح", "status": "ready", "link": "https://example.com/anatomy_1.pdf", "desc": "مقدمة شاملة وأساسيات علم التشريح البشري."},
-    {"id": 2, "title": "الخلايا والأنسجة", "status": "soon", "link": "", "desc": "دراسة أنواع الخلايا والأنسجة في الجسم."},
-    {"id": 3, "title": "الجهاز الهيكلي - مقدمة", "status": "soon", "link": "", "desc": "نظرة عامة على الجهاز الهيكلي."},
-    {"id": 4, "title": "عظام الجمجمة", "status": "soon", "link": "", "desc": "تفاصيل عظام الجمجمة والوجه."},
-    {"id": 5, "title": "العمود الفقري", "status": "soon", "link": "", "desc": "تشريح فقرات العمود الفقري."},
-    {"id": 6, "title": "القفص الصدري", "status": "soon", "link": "", "desc": "تشريح الضلوع وعظمة القص."},
-    {"id": 7, "title": "الطرف العلوي", "status": "soon", "link": "", "desc": "عظام وعضلات اليد والذراع."},
-    {"id": 8, "title": "الطرف السفلي", "status": "soon", "link": "", "desc": "عظام وعضلات الساق والقدم."},
-    {"id": 9, "title": "المفاصل وأنواعها", "status": "soon", "link": "", "desc": "تصنيف المفاصل وحركاتها."},
-    {"id": 10, "title": "الجهاز العضلي - مقدمة", "status": "soon", "link": "", "desc": "أساسيات عمل العضلات."},
-    {"id": 11, "title": "عضلات الرأس والوجه", "status": "soon", "link": "", "desc": "تشريح العضلات التعبيرية في الوجه."},
-    {"id": 12, "title": "عضلات الرقبة", "status": "soon", "link": "", "desc": "تشريح وعضلات الرقبة."},
-    {"id": 13, "title": "عضلات الصدر", "status": "soon", "link": "", "desc": "تشريح عضلات منطقة الصدر."},
-    {"id": 14, "title": "عضلات البطن", "status": "soon", "link": "", "desc": "تشريح عضلات البطن."},
-    {"id": 15, "title": "عضلات الظهر", "status": "soon", "link": "", "desc": "تشريح عضلات الظهر."},
-    {"id": 16, "title": "عضلات الطرف العلوي", "status": "soon", "link": "", "desc": "تفاصيل عضلات الذراعين."},
-    {"id": 17, "title": "عضلات الطرف السفلي", "status": "soon", "link": "", "desc": "تفاصيل عضلات الأرجل."},
-    {"id": 18, "title": "الجهاز العصبي - مقدمة", "status": "soon", "link": "", "desc": "أساسيات الجهاز العصبي."},
-    {"id": 19, "title": "الدماغ", "status": "soon", "link": "", "desc": "تشريح أقسام الدماغ الرئيسية."},
-    {"id": 20, "title": "الحبل الشوكي", "status": "soon", "link": "", "desc": "تشريح الحبل الشوكي ووظائفه."},
-    {"id": 21, "title": "الأعصاب القحفية", "status": "soon", "link": "", "desc": "الأعصاب القحفية الـ 12 وتوزيعها."},
-    {"id": 22, "title": "الأعصاب الشوكية", "status": "soon", "link": "", "desc": "توزيع الأعصاب الشوكية."},
-    {"id": 23, "title": "الجهاز الدوري - تشريح القلب", "status": "soon", "link": "", "desc": "تشريح حجرات وصمامات القلب."},
-    {"id": 24, "title": "الأوعية الدموية", "status": "soon", "link": "", "desc": "الشرايين والأوردة الرئيسية."},
-    {"id": 25, "title": "الجهاز التنفسي", "status": "soon", "link": "", "desc": "تشريح الرئتين والمجاري التنفسية."},
-    {"id": 26, "title": "الجهاز الهضمي", "status": "soon", "link": "", "desc": "تشريح أعضاء الجهاز الهضمي."},
-    {"id": 27, "title": "الجهاز البولي", "status": "soon", "link": "", "desc": "تشريح الكلى والمثانة."},
-    {"id": 28, "title": "الجهاز التناسلي", "status": "soon", "link": "", "desc": "نظرة عامة على الجهاز التناسلي."},
-    {"id": 29, "title": "الجلد وملحقاته", "status": "soon", "link": "", "desc": "طبقات الجلد، الغدد، الشعر والأظافر."},
-    {"id": 30, "title": "تشريح الوجه المهم للتجميل والليزر", "status": "soon", "link": "", "desc": "أهم الطبقات والأعصاب المستهدفة في جلسات الليزر والتجميل."},
-]
+# حالات المتابعة لإدخال البيانات (Conversation States)
+WAITING_REPORT_TITLE, WAITING_REPORT_DESC, WAITING_REPORT_FILE = range(3)
+
+# ---------------------------------------------------------
+# إدارة قاعدة البيانات (SQLite)
+# ---------------------------------------------------------
+def init_db():
+    conn = sqlite3.connect("library.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            desc TEXT,
+            status TEXT DEFAULT 'ready',
+            file_id TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
 
 # ---------------------------------------------------------
 # لوحة الأزرار السفلية الشاملة (Reply Keyboard)
 # ---------------------------------------------------------
 def get_main_keyboard(user_id: int):
     buttons = [
-        [KeyboardButton("📚 سلاسل التقارير"), KeyboardButton("✨ تقارير التجميل والليزر")],
-        [KeyboardButton("ℹ️ معلومات عن المكتبة")]
+        [KeyboardButton("📚 سلاسل التقارير"), KeyboardButton("ℹ️ معلومات عن المكتبة")]
     ]
     if user_id == ADMIN_ID:
         buttons.append([KeyboardButton("⚙️ لوحة تحكم الأدمن")])
@@ -68,156 +58,240 @@ def get_main_keyboard(user_id: int):
     return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
 
 # ---------------------------------------------------------
-# الأوامر والرسائل
+# الأوامر والرسائل الرئيسية
 # ---------------------------------------------------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.effective_user
     reply_markup = get_main_keyboard(user.id)
 
     welcome_text = (
-        f"أهلاً بك يا {user.first_name} في **مكتبة تقنيات التجميل والليزر**! 🌿🩺\n\n"
-        "يمكنك استخدام الأزرار في الأسفل للتنقل بين سلاسل التقارير وتصفح الأقسام بكل سهولة."
+        "🎀 أهلاً وسهلاً بك في بوت قناة التجميل غير الجراحي\n\n"
+        "يسعدنا انضمامك 💙\n\n"
+        "هذا البوت صُمم ليساعد طلبة قسم تقنيات التجميل والليزر في العراق على الوصول إلى المحتوى العلمي بسهولة\n\n"
+        "ستجد هنا:\n"
+        "📚 تقارير ومحاضرات\n"
+        "🧬 مصادر علمية\n"
+        "📝 أسئلة ومراجعات\n"
+        "📢 آخر الإعلانات\n"
+        "🎓 كل ما يخص القسم في مكان واحد\n\n"
+        "اختر من القائمة بالأسفل الخدمة التي تحتاجها وابدأ رحلتك التعليمية معنا\n\n"
+        "نتمنى لك التوفيق والنجاح 🌸\n\n"
+        "https://t.me/TJMELON"
     )
 
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
+    await update.message.reply_text(welcome_text, reply_markup=reply_markup, disable_web_page_preview=False)
+    return ConversationHandler.END
 
 # التعامل مع الأزرار النصية السفلية
-async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_text_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = update.message.text
     user = update.effective_user
 
     if text == "📚 سلاسل التقارير":
-        keyboard = [
-            [InlineKeyboardButton("📚 سلسلة علم التشريح (Anatomy)", callback_data="series_anatomy")],
-        ]
-        await update.message.reply_text(
-            "📖 **سلاسل التقارير المتاحة:**\nاختر السلسلة التي ترغب بتصفحها:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
-        )
-
-    elif text == "✨ تقارير التجميل والليزر":
-        keyboard = [
-            [InlineKeyboardButton("⚡ تقارير أجهزة الليزر", callback_data="laser_reports")],
-            [InlineKeyboardButton("🧪 تقارير المواد والتركيبات", callback_data="cosmetics_reports")],
-            [InlineKeyboardButton("🩺 العناية والبروتوكولات السريرية", callback_data="clinical_reports")],
-        ]
-        await update.message.reply_text(
-            "✨ **قسم تقارير التجميل والليزر الأكاديمي:**\n"
-            "اختر التخصص الفرعي لعرض التقارير المتاحة:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
-        )
+        await show_reports_list(update, context)
 
     elif text == "ℹ️ معلومات عن المكتبة":
-        await update.message.reply_text(
-            "ℹ️ **عن المكتبة الرقمية:**\n\n"
-            "مكتبة أكاديمية متخصصة في توفير التقارير والدراسات لطلاب قسم **تقنيات التجميل والليزر**.\n"
-            "تم إعداد وتنسيق هذه السلاسل لمساعدة الطلاب في مسيرتهم العلمية 🌿."
+        info_text = (
+            "📚 معلومات المكتبة\n\n"
+            "مرحباً بك في مكتبة التجميل غير الجراحي\n\n"
+            "المكتبة أُنشئت لتكون مرجعاً علمياً لطلبة قسم تقنيات التجميل والليزر في العراق، وتهدف إلى جمع المصادر التعليمية في مكان واحد لتسهيل الوصول إليها.\n\n"
+            "ستجد داخل المكتبة:\n"
+            "📖 تقارير علمية\n"
+            "📚 كتب ومراجع\n"
+            "📝 ملخصات دراسية\n"
+            "🎓 محاضرات وملفات PDF\n"
+            "🧬 معلومات عن الأجهزة والتقنيات\n"
+            "❓ أسئلة للمراجعة والاختبارات\n"
+            "📢 ملفات ومحتوى يتم تحديثه باستمرار\n\n"
+            "نسعى لتوفير محتوى علمي منظم وموثوق يساعد الطلبة طوال مسيرتهم الدراسية.\n\n"
+            "نتمنى لكم الفائدة والتوفيق 🌸"
         )
+        keyboard = [
+            [InlineKeyboardButton("📖 الدخول إلى المكتبة", callback_data="open_library")],
+            [InlineKeyboardButton("📂 التصنيفات", callback_data="categories")],
+            [InlineKeyboardButton("🔙 العودة", callback_data="back_home")]
+        ]
+        await update.message.reply_text(info_text, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif text == "⚙️ لوحة تحكم الأدمن" and user.id == ADMIN_ID:
-        keyboard = [
-            [InlineKeyboardButton("📊 إحصائيات السلاسل والتقارير", callback_data="admin_stats")],
-            [InlineKeyboardButton("✏️ تعديل حالات التقارير", callback_data="admin_edit_status")],
-            [InlineKeyboardButton("📢 إرسال إشعار للطلاب (إذاعة)", callback_data="admin_broadcast")],
-        ]
-        await update.message.reply_text(
-            "⚙️ **أهلاً بك في لوحة تحكم الأدمن المتقدمة:**\n"
-            "من هنا يمكنك إدارة كامل محتوى البوت ومتابعة الحالة.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
-        )
+        await show_admin_panel(update, context)
 
-# التعامل مع أزرار الشاشة (Inline Buttons)
-async def inline_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    return ConversationHandler.END
+
+# عرض قائمة التقارير للطلاب
+async def show_reports_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    conn = sqlite3.connect("library.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, title, status FROM reports")
+    reports = cursor.fetchall()
+    conn.close()
+
+    keyboard = []
+    if reports:
+        for r_id, title, status in reports:
+            icon = "🟢" if status == "ready" else ("🟡" if status == "in_progress" else "🔴")
+            keyboard.append([InlineKeyboardButton(f"{icon} {title}", callback_data=f"view_rep_{r_id}")])
+    else:
+        keyboard.append([InlineKeyboardButton("لا توجد تقارير مضافة حالياً", callback_data="none")])
+
+    text = "📚 **سلاسل التقارير المتاحة:**\n🟢 جاهز | 🟡 جاري العمل | 🔴 قريباً\n\nاختر التقرير المطلوب:"
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    else:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+# لوحة الأدمن
+async def show_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("➕ إضافة تقرير جديد (PDF)", callback_data="admin_add_rep")],
+        [InlineKeyboardButton("✏️ إدارة / حذف التقارير", callback_data="admin_manage_reps")],
+    ]
+    text = "⚙️ **لوحة تحكم الأدمن المتقدمة:**\nيمكنك من هنا إضافة ملفات PDF وإدارتها وحذفها."
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    else:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+# ---------------------------------------------------------
+# خطوات إضافة تقرير جديد (ConversationHandler)
+# ---------------------------------------------------------
+async def start_add_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id != ADMIN_ID:
+        return ConversationHandler.END
+
+    await query.edit_message_text("📝 **أرسل الآن عنوان/اسم التقرير الجديد:**", parse_mode="Markdown")
+    return WAITING_REPORT_TITLE
+
+async def receive_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data["rep_title"] = update.message.text
+    await update.message.reply_text("📖 **أرسل الآن وصفاً مختصراً للتقرير:**")
+    return WAITING_REPORT_DESC
+
+async def receive_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data["rep_desc"] = update.message.text
+    await update.message.reply_text("📎 **الآن أرسل ملف الـ PDF الخاص بالتقرير:**")
+    return WAITING_REPORT_FILE
+
+async def receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not update.message.document:
+        await update.message.reply_text("⚠️ يرجى إرسال ملف PDF كـ مستند (Document).")
+        return WAITING_REPORT_FILE
+
+    file_id = update.message.document.file_id
+    title = context.user_data["rep_title"]
+    desc = context.user_data["rep_desc"]
+
+    conn = sqlite3.connect("library.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO reports (title, desc, status, file_id) VALUES (?, ?, 'ready', ?)", (title, desc, file_id))
+    conn.commit()
+    conn.close()
+
+    await update.message.reply_text(f"✅ **تم إضافة التقرير بنجاح!**\n\n📌 **العنوان:** {title}", reply_markup=get_main_keyboard(ADMIN_ID), parse_mode="Markdown")
+    return ConversationHandler.END
+
+async def cancel_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("❌ تم إلغاء الإضافة.", reply_markup=get_main_keyboard(ADMIN_ID))
+    return ConversationHandler.END
+
+# ---------------------------------------------------------
+# معالجة الضغط على الأزرار الداخلية (Inline Buttons)
+# ---------------------------------------------------------
+async def inline_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
-    user = update.effective_user
+    user_id = query.from_user.id
 
-    if data == "series_anatomy":
-        keyboard = []
-        for item in ANATOMY_SERIES:
-            if item["status"] == "ready":
-                icon = "🟢"
-            elif item["status"] == "in_progress":
-                icon = "🟡"
-            else:
-                icon = "🔴"
-                
-            btn_text = f"{icon} {item['id']}. {item['title']}"
-            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"anat_{item['id']}")])
-            
-        await query.edit_message_text(
-            "📚 **سلسلة علم التشريح (Anatomy):**\n"
-            "🟢 جاهز | 🟡 جاري العمل | 🔴 قريباً\n\n"
-            "اختر التقرير لعرض تفاصيله ورابط التحميل:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
+    if data == "open_library" or data == "categories":
+        await show_reports_list(update, context)
 
-    elif data.startswith("anat_"):
-        item_id = int(data.split("_")[1])
-        item = next((b for b in ANATOMY_SERIES if b["id"] == item_id), None)
+    elif data == "back_home":
+        await query.edit_message_text("🌸 نتمنى لك التوفيق والنجاح!")
 
-        if item:
-            status_text = "🟢 جاهز للتحميل" if item["status"] == "ready" else ("🟡 جاري العمل عليه" if item["status"] == "in_progress" else "🔴 قريباً يتم العمل عليه")
+    elif data.startswith("view_rep_"):
+        rep_id = int(data.split("_")[2])
+        conn = sqlite3.connect("library.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, title, desc, status, file_id FROM reports WHERE id=?", (rep_id,))
+        rep = cursor.fetchone()
+        conn.close()
+
+        if rep:
+            r_id, title, desc, status, file_id = rep
+            status_str = "🟢 جاهز للتحميل" if status == "ready" else ("🟡 جاري العمل عليه" if status == "in_progress" else "🔴 قريباً")
             
-            text = (
-                f"📖 **التقرير رقم {item['id']}:** {item['title']}\n"
-                f"📊 **الحالة:** {status_text}\n\n"
-                f"📝 **الوصف:**\n{item['desc']}"
-            )
-            
+            text = f"📖 **التقرير:** {title}\n📊 **الحالة:** {status_str}\n\n📝 **الوصف:**\n{desc}"
             keyboard = []
-            if item["status"] == "ready":
-                keyboard.append([InlineKeyboardButton("📥 تحميل / قراءة التقرير", url=item["link"])])
             
-            keyboard.append([InlineKeyboardButton("🔙 عودة لسلسلة التشريح", callback_data="series_anatomy")])
-            
-            await query.edit_message_text(
-                text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
-            )
+            if file_id and status == "ready":
+                keyboard.append([InlineKeyboardButton("📥 الحصول على ملف PDF", callback_data=f"send_file_{r_id}")])
+            keyboard.append([InlineKeyboardButton("🔙 العودة للقائمة", callback_data="open_library")])
 
-    elif data in ["laser_reports", "cosmetics_reports", "clinical_reports"]:
-        keyboard = [[InlineKeyboardButton("🔙 عودة", callback_data="series_anatomy")]]
-        await query.edit_message_text(
-            "🚧 **جاري تجهيز تقارير هذا القسم.**\nسيتم إطلاقها وترتيبها قريباً جداً!",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
-        )
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    # أزرار لوحة التحكم
-    elif data == "admin_stats" and user.id == ADMIN_ID:
-        ready_c = sum(1 for i in ANATOMY_SERIES if i["status"] == "ready")
-        prog_c = sum(1 for i in ANATOMY_SERIES if i["status"] == "in_progress")
-        soon_c = sum(1 for i in ANATOMY_SERIES if i["status"] == "soon")
-        
-        await query.edit_message_text(
-            f"📊 **إحصائيات سلسلة التشريح:**\n\n"
-            f"🟢 التقارير الجاهزة: {ready_c}\n"
-            f"🟡 تقارير قيد الإعداد: {prog_c}\n"
-            f"🔴 تقارير قريباً: {soon_c}\n"
-            f"📂 المجموع الكلي: {len(ANATOMY_SERIES)} تقريراً",
-            parse_mode="Markdown"
-        )
+    elif data.startswith("send_file_"):
+        rep_id = int(data.split("_")[2])
+        conn = sqlite3.connect("library.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT title, file_id FROM reports WHERE id=?", (rep_id,))
+        rep = cursor.fetchone()
+        conn.close()
 
-    elif data == "admin_edit_status" and user.id == ADMIN_ID:
-        await query.edit_message_text(
-            "✏️ **طريقة تعديل حالة أي تقرير:**\n\n"
-            "تستطيع تغيير حالة أي تقرير بسهولة فقط بتغيير قيمة `" "status" "` داخل كود البوت إلى:\n"
-            "• `ready` (جاهز 🟢)\n"
-            "• `in_progress` (جاري العمل 🟡)\n"
-            "• `soon` (قريباً 🔴)",
-            parse_mode="Markdown"
-        )
+        if rep and rep[1]:
+            await query.message.reply_document(document=rep[1], caption=f"📄 **ملف تقرير:** {rep[0]}")
 
-    elif data == "admin_broadcast" and user.id == ADMIN_ID:
-        await query.edit_message_text(
-            "📢 **خاصية الإذاعة:**\nيمكنك استخدام هذا الزر مستقبلاً لإرسال تحديثات المكتبة لجميع المشتركين.",
-            parse_mode="Markdown"
-        )
+    elif data == "admin_manage_reps" and user_id == ADMIN_ID:
+        conn = sqlite3.connect("library.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, title, status FROM reports")
+        reports = cursor.fetchall()
+        conn.close()
+
+        keyboard = []
+        for r_id, title, status in reports:
+            icon = "🟢" if status == "ready" else ("🟡" if status == "in_progress" else "🔴")
+            keyboard.append([
+                InlineKeyboardButton(f"{icon} {title}", callback_data=f"adm_edit_{r_id}")
+            ])
+        keyboard.append([InlineKeyboardButton("🔙 العودة للوحة الأدمن", callback_data="admin_home")])
+        await query.edit_message_text("⚙️ **اختر التقرير لتغيير حالته أو حذفه:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif data == "admin_home" and user_id == ADMIN_ID:
+        await show_admin_panel(update, context)
+
+    elif data.startswith("adm_edit_") and user_id == ADMIN_ID:
+        rep_id = int(data.split("_")[2])
+        keyboard = [
+            [InlineKeyboardButton("🟢 تعيين كـ جاهز", callback_data=f"set_stat_{rep_id}_ready")],
+            [InlineKeyboardButton("🟡 تعيين كـ جاري العمل", callback_data=f"set_stat_{rep_id}_in_progress")],
+            [InlineKeyboardButton("🔴 تعيين كـ قريباً", callback_data=f"set_stat_{rep_id}_soon")],
+            [InlineKeyboardButton("🗑️ حذف التقرير نهائياً", callback_data=f"del_rep_{rep_id}")],
+            [InlineKeyboardButton("🔙 العودة", callback_data="admin_manage_reps")]
+        ]
+        await query.edit_message_text("✏️ **اختر الإجراء المطلوبة للتقرير:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif data.startswith("set_stat_") and user_id == ADMIN_ID:
+        _, _, rep_id, new_status = data.split("_")
+        conn = sqlite3.connect("library.db")
+        cursor = conn.cursor()
+        cursor.execute("UPDATE reports SET status=? WHERE id=?", (new_status, rep_id))
+        conn.commit()
+        conn.close()
+        await query.edit_message_text("✅ **تم تحديث حالة التقرير بنجاح!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 العودة", callback_data="admin_manage_reps")]]), parse_mode="Markdown")
+
+    elif data.startswith("del_rep_") and user_id == ADMIN_ID:
+        rep_id = int(data.split("_")[2])
+        conn = sqlite3.connect("library.db")
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM reports WHERE id=?", (rep_id,))
+        conn.commit()
+        conn.close()
+        await query.edit_message_text("🗑️ **تم حذف التقرير بنجاح.**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 العودة", callback_data="admin_manage_reps")]]), parse_mode="Markdown")
 
 # ---------------------------------------------------------
 # التشغيل الرئيسي
@@ -225,11 +299,23 @@ async def inline_button_handler(update: Update, context: ContextTypes.DEFAULT_TY
 def main() -> None:
     app = Application.builder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_buttons))
-    app.add_handler(CallbackQueryHandler(inline_button_handler))
+    # محادثة إضافة التقرير
+    add_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(start_add_report, pattern="^admin_add_rep$")],
+        states={
+            WAITING_REPORT_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_title)],
+            WAITING_REPORT_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_desc)],
+            WAITING_REPORT_FILE: [MessageHandler(filters.Document.ALL, receive_file)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_add)],
+    )
 
-    print("🤖 البوت يعمل الآن بنجاح مع التوكن المحدث!")
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(add_conv)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_buttons))
+    app.add_handler(CallbackQueryHandler(inline_handler))
+
+    print("🤖 البوت يعمل بنجاح مع نظام قاعدة البيانات والملفات المباشرة!")
     app.run_polling()
 
 if __name__ == "__main__":
